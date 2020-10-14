@@ -1,0 +1,445 @@
+/*
+ *  センサ値取得用シグニチャ
+ */
+signature sSensor{
+    // センサ値の取得
+    void getValue([out] uint16_t *value);
+};
+signature sSensorArray{
+    // センサ値の取得（赤外線，カラー，コンパス）
+    void getValue([out] int16_t *buf, [in] int8_t bufferSize);
+};
+
+/*
+ *  センサ制御用シグニチャ
+ */
+signature sSensorControl{
+    // センサを起動する
+    void on(void);
+    // センサを止める
+    void off(void);
+};
+
+/*
+ *  センサキャリブレーション用シグニチャ
+ */
+signature sSensorCaribrate{
+    bool_t calibrate(void);
+};
+
+/*
+ *  センサの共通部分におけるシグニチャ
+ *  デバイスレジスタの設定をする
+ */
+signature sSensorPort{
+    void clearSCL(void);
+    void clearSDA(void);
+    void setSCL(void);
+    void setSDA(void);
+    void inputPower([in] uint8_t powerType);
+    uint16_t getValue(void);
+};
+
+/*
+ *  I2C通信処理のためのシグニチャ
+ */
+signature sI2C{
+    void enable(void);
+    void disable(void);
+    // 通信処理中か？
+    bool_t isBusy(void);
+    // 通信処理のパケットを生成
+    bool_t startTransaction([in] uint32_t address, [in] int32_t internalAddress, [in] int32_t internalAddressBytes, [inout] uint8_t *data, [in] uint32_t dataSize, [in] int32_t direction);
+    void initialize(void);
+    // 通信処理本体
+    void interruptBody([in] uint32_t inputs);
+};
+
+/*
+ *  センサの初期化と割込み処理を呼び出すためのシグニチャ
+ */
+signature siSensorDriver{
+    void initialize(void);
+    void i2cInterruptBody([in] uint32_t inputs);
+};
+
+/*
+ *  I2C通信の1フレーム
+ */
+typedef struct i2cPartialTransaction{
+    uint8_t start;
+    uint8_t restart;
+    uint8_t stop;
+    uint8_t tx;
+    uint8_t lastPT;
+    uint16_t size;
+    uint8_t *data;
+} I2CPT;
+
+/*
+ *  各センサポート
+ */
+celltype tSensorPort{
+    entry sSensorPort eSensorPort;
+
+    attr{
+        /* ポート番号を指定 */
+        uint8_t portNumber;
+    };
+};
+
+/*
+ *  各センサポート(I2C通信)
+ */
+celltype tI2C{
+    entry sI2C eI2C;
+
+    attr{
+        /* ポート番号を指定 */
+        uint8_t portNumber;
+    };
+    var{
+        [size_is(3)] uint8_t *deviceAddress;
+        [size_is(3)] I2CPT *partialTransaction;
+        I2CPT *currentPT;
+        uint32_t state;
+        uint32_t nbits;
+        bool_t ackSlot;
+        bool_t ackSlotPending;
+        uint8_t *data;
+        bool_t transmitting;
+    };
+};
+
+/*
+ *  温度センサ
+ */
+celltype tTempSensorBody{
+    [inline] entry sSensor eSensor;
+    [inline] entry sSensorControl eSensorControl;
+    [inline] entry siSensorDriver eiSensorDriver;
+    [inline] entry sRoutineBody eTerminate;
+    call sSensorPort cSensorPort;
+};
+[active]
+composite tTempSensor{
+    entry sSensor eSensor;
+    entry sSensorControl eSensorControl;
+    entry siSensorDriver eiSensorDriver;
+
+    attr{
+        /* ポート番号を指定 */
+        uint8_t portNumber;
+    };
+
+    cell tSensorPort SensorPort{
+        portNumber = composite.portNumber;
+    };
+    cell tTempSensorBody TempSensorBody{
+        cSensorPort = SensorPort.eSensorPort;
+    };
+    cell tTerminateRoutine TerminateTempSensor{
+        cTerminateRoutineBody = TempSensorBody.eTerminate;
+    };
+
+    eSensor => TempSensorBody.eSensor;
+    eSensorControl => TempSensorBody.eSensorControl;
+    eiSensorDriver => TempSensorBody.eiSensorDriver;
+};
+
+/*
+ *  ジャイロセンサ
+ */
+celltype tGyroSensorBody{
+    [inline] entry sSensor eSensor;
+    [inline] entry siSensorDriver eiSensorDriver;
+    call sSensorPort cSensorPort;
+};
+composite tGyroSensor{
+    entry sSensor eSensor;
+    entry siSensorDriver eiSensorDriver;
+
+    attr{
+        /* ポート番号を指定 */
+        uint8_t portNumber;
+    };
+
+    cell tSensorPort SensorPort{
+        portNumber = composite.portNumber;
+    };
+    cell tGyroSensorBody GyroSensorBody{
+        cSensorPort = SensorPort.eSensorPort;
+    };
+
+    eSensor => GyroSensorBody.eSensor;
+    eiSensorDriver => GyroSensorBody.eiSensorDriver;
+};
+
+/*
+ *  タッチセンサ
+ */
+celltype tTouchSensorBody{
+    [inline] entry sSensor eSensor;
+    [inline] entry siSensorDriver eiSensorDriver;
+    call sSensorPort cSensorPort;
+};
+composite tTouchSensor{
+    entry sSensor eSensor;
+    entry siSensorDriver eiSensorDriver;
+
+    attr{
+        /* ポート番号を指定*/
+        uint8_t portNumber;
+    };
+
+    cell tSensorPort SensorPort{
+        portNumber = composite.portNumber;
+    };
+    cell tTouchSensorBody TouchSensorBody{
+        cSensorPort = SensorPort.eSensorPort;
+    };
+
+    eSensor => TouchSensorBody.eSensor;
+    eiSensorDriver => TouchSensorBody.eiSensorDriver;
+};
+
+/*
+ *  超音波センサ
+ */
+celltype tSonicSensorBody{
+    [inline] entry sSensor eSensor;
+    [inline] entry siSensorDriver eiSensorDriver;
+    [inline] entry sRoutineBody eTerminate;
+    call sSensorPort cSensorPort;
+    call sI2C cI2C;
+    var{
+        uint8_t distance;
+    };
+};
+[active]
+composite tSonicSensor{
+    entry sSensor eSensor;
+    entry siSensorDriver eiSensorDriver;
+
+    attr{
+        /* ポート番号を指定*/
+        uint8_t portNumber;
+    };
+
+    cell tSensorPort SensorPort{
+        portNumber = composite.portNumber;
+    };
+    cell tI2C I2C{
+        portNumber = composite.portNumber;
+    };
+    cell tSonicSensorBody SonicSensorBody{
+        cSensorPort = SensorPort.eSensorPort;
+        cI2C = I2C.eI2C;
+    };
+    cell tTerminateRoutine TerminateSonicSensor{
+        cTerminateRoutineBody = SonicSensorBody.eTerminate;
+    };
+
+    eSensor => SonicSensorBody.eSensor;
+    eiSensorDriver => SonicSensorBody.eiSensorDriver;
+};
+
+/*
+ *  加速度センサ
+ */
+celltype tAccelerationSensorBody{
+    [inline] entry sSensorArray eSensor;
+    [inline] entry siSensorDriver eiSensorDriver;
+    call sSensorPort cSensorPort;
+    call sI2C cI2C;
+};
+composite tAccelerationSensor{
+    entry sSensorArray eSensor;
+    entry siSensorDriver eiSensorDriver;
+
+    attr{
+        /* ポート番号を指定 */
+        uint8_t portNumber;
+    };
+
+    cell tSensorPort SensorPort{
+        portNumber = composite.portNumber;
+    };
+    cell tI2C I2C{
+        portNumber = composite.portNumber;
+    };
+    cell tAccelerationSensorBody AccelerationSensorBody{
+        cSensorPort = SensorPort.eSensorPort;
+        cI2C = I2C.eI2C;
+    };
+
+    eSensor => AccelerationSensorBody.eSensor;
+    eiSensorDriver => AccelerationSensorBody.eiSensorDriver;
+};
+
+/*
+ *  赤外線反射センサ
+ */
+celltype tIRSeekerBody{
+    [inline] entry sSensorArray eSensor;
+    [inline] entry siSensorDriver eiSensorDriver;
+    call sSensorPort cSensorPort;
+    call sI2C cI2C;
+};
+composite tIRSeeker{
+    entry sSensorArray eSensor;
+    entry siSensorDriver eiSensorDriver;
+
+    attr{
+        /* ポート番号を指定 */
+        uint8_t portNumber;
+    };
+
+    cell tSensorPort SensorPort{
+        portNumber = composite.portNumber;
+    };
+    cell tI2C I2C{
+        portNumber = composite.portNumber;
+    };
+    cell tIRSeekerBody IRSeekerBody{
+        cSensorPort = SensorPort.eSensorPort;
+        cI2C = I2C.eI2C;
+    };
+
+    eSensor => IRSeekerBody.eSensor;
+    eiSensorDriver => IRSeekerBody.eiSensorDriver;
+};
+
+/*
+ *  プラズマセンサ
+ */
+celltype tPlasmaSensorBody{
+    [inline] entry sSensorArray eSensor;
+    [inline] entry siSensorDriver eiSensorDriver;
+    call sSensorPort cSensorPort;
+    call sI2C cI2C;
+};
+composite tPlasmaSensor{
+    entry sSensorArray eSensor;
+    entry siSensorDriver eiSensorDriver;
+
+    attr{
+        /* ポート番号を指定 */
+        uint8_t portNumber;
+    };
+
+    cell tSensorPort SensorPort{
+        portNumber = composite.portNumber;
+    };
+    cell tI2C I2C{
+        portNumber = composite.portNumber;
+    };
+    cell tPlasmaSensorBody PlasmaSensorBody{
+        cSensorPort = SensorPort.eSensorPort;
+        cI2C = I2C.eI2C;
+    };
+
+    eSensor => PlasmaSensorBody.eSensor;
+    eiSensorDriver => PlasmaSensorBody.eiSensorDriver;
+};
+
+/*
+ *  GAS気圧センサ
+ */
+celltype tGasPressureSensorBody{
+    [inline] entry sSensorArray eSensor;
+    [inline] entry sSensorCaribrate eSensorCaribrate;
+    [inline] entry siSensorDriver eiSensorDriver;
+    call sSensorPort cSensorPort;
+    call sI2C cI2C;
+};
+composite tGasPressureSensor{
+    entry sSensorArray eSensor;
+    entry sSensorCaribrate eSensorCaribrate;
+    entry siSensorDriver eiSensorDriver;
+
+    attr{
+        /* ポート番号を指定 */
+        uint8_t portNumber;
+    };
+
+    cell tSensorPort SensorPort{
+        portNumber = composite.portNumber;
+    };
+    cell tI2C I2C{
+        portNumber = composite.portNumber;
+    };
+    cell tGasPressureSensorBody GasPressureSensorBody{
+        cSensorPort = SensorPort.eSensorPort;
+        cI2C = I2C.eI2C;
+    };
+
+    eSensor => GasPressureSensorBody.eSensor;
+    eSensorCaribrate => GasPressureSensorBody.eSensorCaribrate;
+    eiSensorDriver => GasPressureSensorBody.eiSensorDriver;
+};
+
+/*
+ *  センサの初期化ルーチンとI2C通信用ハンドラ
+ */
+[singleton]
+celltype tSensorDriverBody{
+    entry sRoutineBody eInitialize;
+    entry siHandlerBody eiBody;
+    call siSensorDriver ciSensorDriver[];
+
+    attr{
+        uint8_t portMax = 4;
+        INTNO interruptNumber;
+    };
+    FACTORY{
+        /*
+         *  割込み番号を参照するために必要．
+         *  割込み番号を直接書けば不要．
+         */
+        write("$ct$_factory.h", "#include \"nucleo_f407xx.h\"");
+    };
+};
+
+/*
+ *  センサの初期化ルーチンとI2C通信用ハンドラの本体，
+ *  割込みサービスルーチン，割込み要求ライン，初期化ルーチン
+ *  から成る複合セルタイプ
+ */
+[active, singleton]
+composite tSensorDriver{
+    /* 各センサの受け口 eiSensorDriverに結合する */
+    call siSensorDriver ciSensorDriver[];
+
+    attr{
+        /*
+         * I2C通信用タイマの割込みに関する設定情報
+         */
+        INTNO interruptNumber = C_EXP("I2C_NEW_INTNO"); 
+        ATR   interruptAttribute = C_EXP("TA_NULL");
+        PRI   interruptPriority = -4;
+    };
+
+    /* センサの初期化ルーチンとI2C通信用ハンドラの本体 */
+    cell tSensorDriverBody SensorDriverBody{
+        ciSensorDriver => composite.ciSensorDriver;
+        interruptNumber = composite.interruptNumber;
+    };
+    /* 割込みサービスルーチン，割込み要求ライン */
+	cell tInterruptRequest InterruptRequestI2C {
+		interruptNumber = composite.interruptNumber;
+		interruptPriority = composite.interruptPriority;
+	};
+	
+    cell tISR ISRI2C{
+        ciISRBody = SensorDriverBody.eiBody;
+        interruptNumber = composite.interruptNumber;
+        attribute = composite.interruptAttribute;
+    };
+    
+    /* 初期化ルーチン */
+    cell tInitializeRoutine InitializeSensor{
+        cInitializeRoutineBody = SensorDriverBody.eInitialize;
+    };
+};
+

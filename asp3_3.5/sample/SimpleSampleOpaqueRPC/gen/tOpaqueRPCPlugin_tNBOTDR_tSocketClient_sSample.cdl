@@ -1,0 +1,23 @@
+import( "gen/tOpaqueMarshaler_sSample.cdl" );
+
+/* RPC Client side composite celltype */
+composite tOpaqueRPCPlugin_tNBOTDR_tSocketClient_sSample {
+  /* marshaler entry port */
+  entry ::sSample eThroughEntry;
+  call  sChannel cChannel;
+  [optional]
+    call sRPCErrorHandler cErrorHandler;
+  [optional]
+    call sSemaphore cLockChannel;
+
+  cell tNBOTDR TDR {
+    cChannel => composite.cChannel;
+  };
+  cell tOpaqueMarshaler_sSample Marshaler{
+    cTDR = TDR.eTDR;
+    cErrorHandler => composite.cErrorHandler;
+    cLockChannel  => composite.cLockChannel;
+  };
+
+  composite.eThroughEntry => Marshaler.eClientEntry;
+};

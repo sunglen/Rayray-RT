@@ -1,0 +1,38 @@
+/*
+ *  Sensorコンポーネント記述ファイル
+ */
+
+
+/*
+ *  コンポーネントのインポート
+ */ 
+import("tSensorI2C.cdl");
+
+
+/*
+ *  Sensorを操作するためのシグニチャ
+ */
+signature sSensor {
+	void setTempMode([in] uint8_t id, [in] uint8_t mode);
+	void readTemp([in] uint8_t id, [out] float32_t* temp);
+};
+
+
+/*
+ *  Sensorセルタイプ
+ */
+[singleton]
+celltype tSensor{
+    call     sSensorI2C             cSensorI2C;
+    entry siSensorI2CCBR eSensorI2CCBR;
+
+    entry    sRoutineBody 			eInitialize;
+    entry    siHandlerBody          eiISR; /* 割込み処理 */
+    entry    sSensor                eSensor;
+
+	/*
+    var {
+        
+    };
+    */
+};

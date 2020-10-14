@@ -1,0 +1,75 @@
+/*
+ *  ジョイスティック操作プログラム(OS)のコンポーネント記述ファイル
+ */
+
+
+/*
+ *  カーネルオブジェクトの定義
+ */
+import(<kernel.cdl>);
+
+/*
+ * 初期化ルーチンコンポーネントの定義
+ */
+import("tInitializeRoutineBody.cdl");
+
+/*
+ *  デバイスドライバコンポーネントの定義
+ */
+import("tLED.cdl");
+import("tJoystick.cdl");
+
+[singleton]
+celltype tMain03 {
+    require tKernel.eKernel;         /* 呼び口名なし（例：delay） */
+
+    entry   sTaskBody   eTaskBody;   /* Mainタスク */
+
+    call    sLED        cLED;        /* LED操作 */
+    call    sJoystick   cJoystick;   /* Joystick操作 */
+};
+
+/* 
+ *  プロトタイプ宣言
+ */
+cell tMain03   Main03;
+cell tLED      LED;
+cell tJoystick Joystick;
+
+/*
+ *  組み上げ記述
+ */
+cell tKernel ASPKernel {
+};
+
+cell tTask Task1 {
+    /* 呼び口の結合 */
+    cTaskBody         = Main03.eTaskBody;
+
+    /* 属性の設定 */
+    attribute = C_EXP("TA_ACT");
+    priority      = C_EXP("MAIN_PRIORITY");
+    stackSize     = C_EXP("STACK_SIZE");
+};
+
+cell tLED LED {
+};
+
+cell tJoystick Joystick {
+};
+
+/*
+ * 初期化ルーチン 
+ */
+cell tInitializeRoutineBody InitializeRoutineBody {
+    cInitialize[0] = LED.eInitialize;
+    cInitialize[1] = Joystick.eInitialize;
+};
+cell tInitializeRoutine InitializeRoutine {
+    cInitializeRoutineBody = InitializeRoutineBody.eInitializeRoutineBody;
+};
+
+cell tMain03 Main03 {
+    cLED        = LED.eLED;
+    cJoystick   = Joystick.eJoystick;
+};

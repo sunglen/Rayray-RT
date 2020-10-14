@@ -1,0 +1,165 @@
+#
+#		Makefile のターゲット依存部（stm32f4_discovery用）
+#
+
+#
+#  ボード名, チップ名，コア名，開発環境名の定義
+#
+BOARD = stm32f4_imt407g
+CHIP  = stm32f4xx_stm32cube
+PRC   = arm_m
+TOOL  = gcc
+
+#
+#  FPUを使用するか
+#
+FPU_USAGE = FPU_LAZYSTACKING
+
+#
+#  使用するタイマ
+#
+#KERNEL_TIMER = SYSTICK
+KERNEL_TIMER = TIM
+
+#
+#  コンパイルオプション
+#
+INCLUDES := $(INCLUDES) -I$(TARGETDIR) -I$(TARGETDIR)/stm32fcube -I$(TARGETDIR)/stm32fcube/wifi
+CDEFS := $(CDEFS) -DSTM32F407xx
+COPTS := $(COPTS) 
+LDFLAGS := -nostdlib -nostartfiles $(LDFLAGS)
+
+#
+# ファイルサイズ削減のためのオプション
+#
+COPTS   := $(COPTS) -ffunction-sections -fdata-sections
+OBJ_LDFLAGS := $(OBJ_LDFLAGS) -Wl,--gc-sections
+
+#
+#  カーネルに関する定義
+#
+KERNEL_DIRS := $(KERNEL_DIRS) $(TARGETDIR) $(TARGETDIR)/stm32fcube $(TARGETDIR)/stm32fcube/wifi
+KERNEL_ASMOBJS := $(KERNEL_ASMOBJS) start.o
+KERNEL_COBJS := $(KERNEL_COBJS) target_kernel_impl.o \
+                system_stm32f4xx.o \
+                stm32f4xx_nucleo.o bsp_dac.o bsp_spiflash.o \
+                bsp_smbus.o bsp_i2c.o bsp_i2c_OLED.o \
+                bsp_i2c_hw.o bsp_i2c_hw_24CXX.o \
+                SPI_TMC.o \
+                systemclock_config.o \
+                stm32f4xx_hal_gpio.o stm32f4xx_hal_uart.o \
+                stm32f4xx_hal_rcc.o stm32f4xx_hal_dma.o \
+                stm32f4xx_hal_adc.o stm32f4xx_hal_dac.o \
+                stm32f4xx_hal_spi.o stm32f4xx_hal_eth.o \
+                stm32f4xx_hal.o stm32f4xx_hal_cortex.o \
+                stm32f4xx_hal_i2c.o
+
+KERNEL_COBJS := $(KERNEL_COBJS) stm32f4xx_hal_tim.o
+
+ifdef WIFIIF
+KERNEL_COBJS := $(KERNEL_COBJS) wifiuart.o wifi.o
+endif
+
+#
+#  システムサービスに関する定義
+#
+SYSSVC_DIRS := $(SYSSVC_DIRS)
+SYSSVC_COBJS := $(SYSSVC_COBJS)
+
+#
+#  使用するタイマ
+#
+ifeq ($(KERNEL_TIMER), SYSTICK)
+CDEFS := $(CDEFS) -DUSE_SYSTICK_AS_TIMETICK
+KERNEL_COBJS := $(KERNEL_COBJS) core_timer.o
+else
+ifeq ($(KERNEL_TIMER), TIM)
+CDEFS := $(CDEFS) -DUSE_TIM_AS_HRT
+KERNEL_COBJS := $(KERNEL_COBJS) target_timer.o
+endif
+endif
+
+#
+#  GNU開発環境のターゲットアーキテクチャの定義
+#
+GCC_TARGET = arm-none-eabi
+
+#
+#  トレースログ記録のサンプルコードに関する定義
+#
+ifdef ENABLE_TRACE
+	COPTS := $(COPTS) -DTOPPERS_ENABLE_TRACE
+	SYSSVC_DIRS := $(SYSSVC_DIRS) $(SRCDIR)/arch/tracelog
+endif
+
+#
+#  依存関係の定義
+#
+cfg1_out.timestamp: $(TARGETDIR)/target_timer.cfg
+offset.timestamp: 
+kernel_cfg.timestamp: $(TARGETDIR)/target_kernel.trb
+check.timestamp: $(TARGETDIR)/target_check.trb
+
+#
+#  リンカスクリプトの定義
+#
+LDSCRIPT = $(TARGETDIR)/stm32f4xx_rom.ld
+
+#
+#  チップ依存部のインクルード
+#
+include $(SRCDIR)/arch/$(PRC)_$(TOOL)/$(CHIP)/Makefile.chip
+
+#
+#  フラッシュへの書き込み
+#
+#UNAME_TARGET = Cygwin
+UNAME_TARGET = $(UNAME)
+ifeq ($(UNAME_TARGET), Cygwin)
+	OPENOCD_PATH = /cygdrive/e/PentaWenzhouSoftwareProjects/0100_Smart_Laser_Head/tool/OpenOCD-20200408-0.10.0/bin/openocd.exe
+	OPENOCD_SCRIPT_PATH = E:/PentaWenzhouSoftwareProjects/0100_Smart_Laser_Head/tool/OpenOCD-20200408-0.10.0/share/openocd/scripts
+	#OPENOCD_PATH = ../../../../../../tool/OpenOCD-20200408-0.10.0/bin/openocd.exe
+	#OPENOCD_SCRIPT_PATH = ../../../../../../tool/OpenOCD-20200408-0.10.0/share/openocd/scripts
+	OPENOCD_SCRIPT  = stm32f4_imt407g.cfg
+else
+	OPENOCD_PATH = /usr/bin/openocd
+	OPENOCD_SCRIPT_PATH = /usr/share/openocd/scripts/
+	OPENOCD_SCRIPT  = stm32f4_imt407g_nucleo.cfg
+endif
+
+ifeq ($(UNAME_TARGET), Cygwin)
+#	GDB = arm-gdb_m0.exe
+	GDB = arm-none-eabi-gdb
+else
+	GDB = arm-none-eabi-gdb
+endif
+
+run: $(OBJNAME).bin
+ifeq ($(UNAME_TARGET), Cygwin)
+	"`cygpath -u "$(OPENOCD_PATH)"`" -s "$(OPENOCD_SCRIPT_PATH)" -f "$(OPENOCD_SCRIPT)" -c "program ./$(OBJNAME).bin verify 0x08000000 reset exit"
+#-c "flash probe 0; flash write_image erase ./$(OBJNAME).axf 0x08000000 reset exit"
+else
+	"$(OPENOCD_PATH)" -s "$(OPENOCD_SCRIPT_PATH)" -f "$(OPENOCD_SCRIPT)" -c "program ./$(OBJNAME).bin verify 0x08000000 reset exit"
+endif
+
+ocd: $(OBJNAME).bin
+ifeq ($(UNAME_TARGET), Cygwin)
+	cygstart "$(OPENOCD_PATH)" '-s "$(OPENOCD_SCRIPT_PATH)"' '-f "$(OPENOCD_SCRIPT)"'
+else
+#	start /MIN "" "$(OPENOCD_PATH)" -s "$(OPENOCD_SCRIPT_PATH)" -f "$(OPENOCD_SCRIPT)"
+	"$(OPENOCD_PATH)" -s "$(OPENOCD_SCRIPT_PATH)" -f "$(OPENOCD_SCRIPT)"
+endif
+
+db: $(OBJNAME).bin
+ifeq ($(UNAME_TARGET), Cygwin)
+	$(GDB) $(OBJFILE) -x $(TARGETDIR)/gdb.ini
+else
+	$(GDB) $(OBJFILE) -x $(TARGETDIR)/gdb.ini
+endif
+
+d: $(OBJNAME).bin
+ifeq ($(UNAME_TARGET), Cygwin)
+	$(GDB) $(OBJFILE) -x $(TARGETDIR)/gdb_noflash.ini
+else
+
+endif

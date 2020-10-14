@@ -1,0 +1,36 @@
+/*
+ *  SensorI2Cコンポーネント記述ファイル
+ */
+
+
+/*
+ * I2Cを操作するためのシグネチャ
+ */
+signature sSensorI2C {
+    void initialize(void);
+    void write([in] uint8_t address, [in] uint8_t writeSize, [in, size_is(writeSize)]const uint8_t *p_buffer);
+    void read([in] uint8_t address, [in] uint8_t readSize, [out, size_is(readSize)] uint8_t* p_buffer);
+};
+
+[callback]
+signature siSensorI2CCBR {
+    void  i2cReady(void);
+};
+
+/*
+ * SensorI2Cセルタイプ
+ */
+[singleton]
+celltype tSensorI2C{
+    entry    sSensorI2C eSensorI2C;
+    call siSensorI2CCBR cSensorI2CCBR;
+    
+    entry	siHandlerBody	eiISR;
+    
+    //call	sInterruptRequest	cInterruptRequest;
+
+    attr {
+        uint8_t writeAddressTemp1 = 0x00;
+        uint8_t readAddressTemp1  = 0x00;
+    };
+};

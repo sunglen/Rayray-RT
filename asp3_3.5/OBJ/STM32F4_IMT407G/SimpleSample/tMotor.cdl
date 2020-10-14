@@ -1,0 +1,129 @@
+/*
+ *  モータのシグニチャ
+ */
+signature sMotor {
+	void initializePort([in] int32_t type);
+    // モータの出力の設定（ 0 % 〜 100 % ）
+    void setPower([in] int32_t power);
+    // モータの回転数[度]の設定
+    void rotate([in] int32_t degrees, [in] uint32_t speed_abs, [in] bool_t blocking);
+    // モータの回転数[度]の取得
+    void getCounts([out] int32_t *degrees);
+    void resetCounts(void);
+};
+
+//[context("non-task")]
+[callback]
+signature siMotorInterrupt{
+    // ロータリエンコーダ割込みに対する各ポートの処理
+    void quadDecode([in] uint32_t pins);
+    // モータを止める
+    void stopMotor(void);
+};
+
+/*
+ * モータドライバ
+ */
+celltype tMotor {
+    /* API */
+    entry sMotor eMotor;
+    /* ロータリエンコーダ割込み，および，終了処理ルーチンから呼び出す */
+    entry siMotorInterrupt eiMotorInterrupt;
+
+    attr{
+        /* ポート番号を指定 */
+        int32_t port;
+    };
+
+    var{
+        int32_t currentDegrees; /* 現在の回転数 */
+        int32_t currentSpeed;         /* 現在の出力スピード */
+        uint32_t preEdge;   /* 前のロータリエンコーダ割込み時の状態: 回転数の更新に使用する */
+    };
+};
+
+/*
+ *  ロータリエンコーダ
+ *  モータの初期化処理，終了処理を兼ねる
+ */
+[singleton]
+celltype tRotaryEncoderBody{
+    call siMotorInterrupt ciMotorInterrupt[]; // 各モータのチェック
+    entry sRoutineBody eInitialize; // 初期化
+    entry sRoutineBody eTerminate;   // 終了処理
+    entry siHandlerBody eiCyclicBody;         // 周期的に割込みを許可
+    entry siHandlerBody eiISR;      // タイヤが回転したときの割込みハンドラ
+
+    attr{
+        INTNO interruptNumber; // 割込み番号
+    };
+
+    var{
+        int32_t interruptCount; // 1周期内での割込み回数
+        bool_t initializedFlag; // 初期化されているかどうか
+    };
+
+    FACTORY{
+        /*
+         *  割込み番号を参照するために必要．
+         *  割込み番号を直接書けば不要．
+         */
+        write("$ct$_factory.h", "#include \"nucleo_f407xx.h\"");
+    };
+};
+
+/*
+ *  ロータリエンコーダの本体，初期化ルーチン，終了処理ルーチン，
+ *  周期ハンドラ，割込みサービスルーチン，割込み要求ラインから成る複合セルタイプ
+ */
+[active, singleton]
+composite tRotaryEncoder {
+    /* 各モータの受け口 eiMotorInterruptに結合する */
+    call siMotorInterrupt ciMotorInterrupt[];
+
+    attr{
+        INTNO interruptNumber = C_EXP("ENC_INTNO");
+    };
+
+    // ロータリエンコーダ本体
+    cell tRotaryEncoderBody RotaryEncoderBody{
+        ciMotorInterrupt => composite.ciMotorInterrupt;
+        interruptNumber = composite.interruptNumber;
+    };
+
+    // 初期化ルーチン
+    cell tInitializeRoutine InitializeMotor{
+        cInitializeRoutineBody = RotaryEncoderBody.eInitialize;
+    };
+
+    // 終了処理
+    cell tTerminateRoutine TerminateMotor{
+        cTerminateRoutineBody = RotaryEncoderBody.eTerminate;
+    };
+
+    // 周期ハンドラ
+    cell tCyclicHandler CyclicMotor{
+		/* 呼び口の結合 */
+        ciHandlerBody = RotaryEncoderBody.eiCyclicBody;
+
+		/* 属性の設定 */
+        attribute = C_EXP("TA_STA");
+        //unit of time is us
+        cycleTime = 1000000;
+        cyclePhase = 1;
+    };
+
+    // 割込みサービスルーチン，割込み要求ライン
+    
+	cell tInterruptRequest InterruptRequestMotor {
+		interruptNumber = composite.interruptNumber;
+		interruptPriority = -4;
+	};
+	
+    cell tISR ISRMotor{
+        ciISRBody = RotaryEncoderBody.eiISR;
+        interruptNumber = composite.interruptNumber;
+        //attribute = C_EXP("(TA_ENAINT)");
+        attribute = C_EXP("TA_NULL");
+    };
+};

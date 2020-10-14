@@ -1,0 +1,26 @@
+import( "gen/tOpaqueMarshaler_sSample.cdl" );
+
+/* RPC Server side composite celltype */
+composite tOpaqueRPCPlugin_tNBOTDR_tSocketServer_sSample {
+  /* Interface */
+  call  ::sSample cCall;
+  call  sChannel   cChannel;
+  [optional]
+    call sRPCErrorHandler cErrorHandler;
+  entry sUnmarshalerMain  eService;
+
+  /* Implementation */
+  cell tNBOTDR TDR {
+    cChannel => composite.cChannel;
+  };
+  cell tPPAllocator PPAllocator {
+    heapSize = 1024;
+  };
+  cell tOpaqueUnmarshaler_sSample Unmarshaler{
+    cTDR        = TDR.eTDR;
+    cErrorHandler => composite.cErrorHandler;
+    cServerCall => composite.cCall;
+    cPPAllocator = PPAllocator.ePPAllocator;
+  };
+  composite.eService => Unmarshaler.eService;
+};

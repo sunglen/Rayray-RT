@@ -1,0 +1,27 @@
+/*
+ *  Joystickコンポーネント記述ファイル
+ */
+
+
+const uint16_t JOYSTICK_RELEASED = 0x0000;
+const uint16_t JOYSTICK_UP       = 0x0001;
+const uint16_t JOYSTICK_DOWN     = 0x0002;
+const uint16_t JOYSTICK_RIGHT    = 0x0003;
+const uint16_t JOYSTICK_LEFT     = 0x0004;
+
+/* 
+ *  ジョイスティック状態を参照するシグニチャ
+ */
+signature sJoystick{
+    uint16_t getState(void);
+};
+
+/*
+ *  ジョイスティックセルタイプ
+ */
+[singleton]
+celltype tJoystick{
+    entry    sRoutineBody eInitialize;
+    entry    sJoystick              eJoystick;
+};
+

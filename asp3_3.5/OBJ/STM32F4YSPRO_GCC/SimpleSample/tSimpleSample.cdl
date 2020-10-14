@@ -1,0 +1,477 @@
+/*
+ *  カーネルオブジェクトの定義
+ */
+import(<kernel.cdl>);
+
+import("syssvc/tSerialPort.cdl");
+import("syssvc/tSerialAdapter.cdl");
+import("syssvc/tSysLog.cdl");
+import("syssvc/tSysLogAdapter.cdl");
+import("syssvc/tLogTask.cdl");
+import("syssvc/tBanner.cdl");
+import("target.cdl");
+
+/*
+ * Simple な Sample (OpaqueRPC 版)
+ *                                               sSocketClientOpener
+ *                                  +---------------------------------------+
+ *                                  |cOpener                                |eOpener
+ *  +-------------+           +-------------+           +-------------+     |    +-------------+
+ *  |             |           |             |           |             |     V    |             |
+ *  |   tTask     | sTaskBody |   tTaskMain | sTaskBody |   tSimple   |  sSample |   tSample   |
+ *  |   Task      |-----------|   TaskMain  |-----------|>  Simple    |==========|>  Sample    |
+ *  |             |cTask eBody|             |cBody eBody|             |cCall eEnt|             |
+ *  |             |Body       |             |           |             |          |             |
+ *  +-------------+           +-------------+           +-------------+          +-------------+
+ */
+
+
+// cygwin 用の簡易な型定義
+// import( <cygwin_kernel.cdl> );
+  // TECS 対応 TOPPERS/ASP ならば import( <kernel.cdl> ); でよい
+
+import( <rpc.cdl> );
+import( <tSocketChannel2.cdl> );
+
+/*
+ *  デバイスドライバコンポーネントの定義
+ */
+import("tLED.cdl");
+import("tLEDIndicator.cdl");
+import("tFileSystem.cdl");
+import("tSensor.cdl");
+import("tMotor.cdl");
+
+
+/*
+ *  sDisplayOutputシグニチャ
+ *  
+ */
+signature sDisplayOutput{
+    void indicatorInitialize(void);
+};
+
+/*
+ *  sBlueToothシグニチャ
+ *  
+ */
+signature sBlueTooth{
+    void blueToothInitialize(void);
+};
+
+/*
+ *  LEDテストプログラムの定義
+ */
+[singleton]
+celltype tMain01 {
+    require tKernel.eKernel;         /* 呼び口名なし（例：delay） */
+
+    entry    sTaskBody  eTaskBody;   /* Mainタスク */
+
+    call    sLED        cLED;        /* LED操作 */
+    
+    call     sSerialPort     cSerialPort;    /* シリアルドライバとの接続 */
+    call     sSysLog         cSysLog;        /* システムログ機能との接続 */
+
+    call     sDisplayOutput  cDisplayOutput; /* 画面初期化 */
+    call     sBlueTooth  cBlueTooth; /* BlueTooth初期化 */
+    
+    call	sFileSystem	cFileSystem;
+    //call	sSensor cSensor;
+    call	sMotor cMotor;
+    
+    call sSensor cTempSensor; // 温度センサの呼び口
+	call sSensorArray cGasPressureSensor; // 気圧の呼び口
+	call sSensorControl cTempSensorControl; // 温度センサ制御の呼び口
+};
+
+/*
+ *  Indicator出力テストプログラムの定義
+ */
+[singleton]
+celltype tDisplayOutput{
+    entry    sTaskBody       eTaskBody;      /* Task2タスク */
+
+    call     sLEDIndicator        cLEDIndicator;       /* Indicator */
+
+    entry    sDisplayOutput  eDisplayOutput; /* 画面初期化 */
+};
+
+/*
+ *  BlueToothテストプログラムの定義
+ */
+[singleton]
+celltype tBlueTooth{
+    entry    sTaskBody       eTaskBody;      /* Task3タスク */
+
+	call	sSerialPort		cSerialPort;	/* シリアルドライバとの接続 */
+	call	snSerialPortManage	cnSerialPortManage;
+											/* シリアルドライバ管理との接続 */
+    //callFileSystem	sFileSystem	cFileSystem;
+    entry    sBlueTooth  eBlueTooth; /* 初期化 */
+};
+
+/* 
+ *  プロトタイプ宣言
+ */
+cell tMain01    Main01;
+cell tLED       LED;
+
+cell tFileSystem       SPIFlashFS;
+
+cell tDisplayOutput        DisplayOutput;
+cell tLEDIndicator         LEDIndicator;
+
+cell tBlueTooth BlueTooth;
+cell tSerialPort SerialPort2;
+//cell tSensorI2C    SensorI2C;
+//cell tSensor       Sensor;
+
+cell tRotaryEncoder RotaryEncoder;
+cell tMotor       Motor;
+
+signature sSample {
+	ER  sayHello( [in]int32_t times );
+	ER  howAreYou( [out,string(len)]char_t *buf, [in]int32_t len );
+};
+
+celltype tSample {
+    call     sSerialPort     cSerialPort;    /* シリアルドライバとの接続 */
+    call     sSysLog         cSysLog;        /* システムログ機能との接続 */
+    
+    call	sFileSystem	cFileSystem;
+    
+	entry sSample eEnt;
+};
+
+[active]
+celltype tSimple {
+    call     sSerialPort     cSerialPort;    /* シリアルドライバとの接続 */
+    call     sSysLog         cSysLog;        /* システムログ機能との接続 */
+	call sSample cCall;
+	call  sSocketClientOpener cOpener;
+	//entry sTaskBody eMain;
+	entry sTaskBody eTaskBody;
+};
+
+[in_through(), linkunit]
+region rSample {
+	cell tSIOPortTarget SIOPortTarget1 {
+		/* 属性の設定 */
+		baseAddress     = C_EXP("USART_BASE");
+		interruptNumber = C_EXP("USART_INTNO");
+		bps = C_EXP("BPS_SETTING");
+	};
+	cell tSIOPortTarget SIOPortTarget2 {
+		/* 属性の設定 */
+		baseAddress     = C_EXP("USART_BLE_BASE");
+		interruptNumber = C_EXP("USART_BLE_INTNO");
+		bps = C_EXP("BPS_SETTING_BLE");
+	};
+	/*
+	 *  低レベル出力の組み上げ記述
+	 */
+	cell tPutLogTarget PutLogTarget {
+		/* SIOドライバとの結合 */
+		cSIOPort = SIOPortTarget1.eSIOPort;
+	};
+	
+	cell tSysLogAdapter SysLogAdapter {
+		cSysLog = SysLog.eSysLog;
+	};
+	
+	cell tSerialAdapter SerialAdapter {
+		cSerialPort[0] = SerialPort1.eSerialPort;
+		cSerialPort[1] = SerialPort2.eSerialPort;
+	};
+	
+	cell tSysLog SysLog {
+		logBufferSize = 32;
+		initLogMask = C_EXP("LOG_UPTO(LOG_NOTICE)");
+										/* ログバッファに記録すべき重要度 */
+		initLowMask = C_EXP("LOG_UPTO(LOG_EMERG)");
+									   	/* 低レベル出力すべき重要度 */
+		cPutLog = PutLogTarget.ePutLog;
+	};
+	
+	cell tSerialPort SerialPort1 {
+		receiveBufferSize = 256;			/* 受信バッファのサイズ */
+		sendBufferSize    = 256;			/* 送信バッファのサイズ */
+
+		/* ターゲット依存部との結合 */
+		cSIOPort = SIOPortTarget1.eSIOPort;
+		eiSIOCBR <= SIOPortTarget1.ciSIOCBR;	/* コールバック */
+	};
+	
+	cell tLogTask LogTask {
+		priority  = 3;					/* システムログタスクの優先度 */
+		stackSize = LogTaskStackSize;	/* システムログタスクのスタックサイズ */
+
+		/* シリアルインタフェースドライバとの結合 */
+		cSerialPort        = SerialPort1.eSerialPort;
+		cnSerialPortManage = SerialPort1.enSerialPortManage;
+
+		/* システムログ機能との結合 */
+		cSysLog = SysLog.eSysLog;
+
+		/* 低レベル出力との結合 */
+		cPutLog = PutLogTarget.ePutLog;
+	};
+	
+	cell tBanner Banner {
+		targetName      = BannerTargetName;
+		copyrightNotice = BannerCopyrightNotice;
+	};
+	
+	cell tKernel Kernel {
+	};
+	cell tSample Sample {
+		cSerialPort = SerialPort1.eSerialPort;
+    	cSysLog = SysLog.eSysLog;
+    	
+    	cFileSystem = SPIFlashFS.eFileSystem;
+	};
+	
+	/*
+	 * タスク１のセル
+	 */
+	cell tTask Task1 {
+    	/* 呼び口の結合 */
+    	cTaskBody = Main01.eTaskBody;
+
+    	/* 属性の設定 */
+    	attribute = C_EXP("TA_ACT");
+    	priority      = C_EXP("MAIN_PRIORITY"); /* 優先度を指定 */
+    	stackSize     = C_EXP("STACK_SIZE");    /*スタックサイズを指定 */
+	};
+
+	/*
+ 	 * タスク2のセル
+	 */
+	cell tTask Task2 {
+    	/* 呼び口の結合 */
+    	cTaskBody = DisplayOutput.eTaskBody;
+    	/* 属性の設定 */
+    	//attribute = C_EXP("TA_ACT");
+    	attribute = C_EXP("TA_NOACTQUE");
+    	priority = C_EXP("8");
+    	stackSize = C_EXP("STACK_SIZE");
+	};
+
+	/*
+	 * タスク2のセル
+	 */
+	cell tTask Task3 {
+    	/* 呼び口の結合 */
+    	cTaskBody = BlueTooth.eTaskBody;
+    	/* 属性の設定 */
+    	//attribute = C_EXP("TA_ACT");
+    	attribute = C_EXP("TA_NOACTQUE");
+    	priority = C_EXP("8");
+    	stackSize = C_EXP("STACK_SIZE");
+	};
+
+	cell tLED LED {
+	};
+	
+	cell tFileSystem       SPIFlashFS {
+	};
+
+	cell tLEDIndicator LEDIndicator {
+	};
+	
+	/*
+	cell tInterruptRequest InterruptRequestI2C {
+		interruptNumber   = C_EXP("I2C_INTNO");
+		interruptPriority = -2;
+	};
+	
+	cell tSensorI2C SensorI2C {
+		//cInterruptRequest = InterruptRequestI2C.eInterruptRequest;
+	};
+	
+	cell tISR ISRInstanceI2C {
+		interruptNumber = C_EXP("I2C_INTNO");
+		isrPriority     = 1;
+		attribute = C_EXP("TA_NULL");
+		ciISRBody       = SensorI2C.eiISR;
+	};
+	
+	cell tSensor Sensor {
+    	cSensorI2C = SensorI2C.eSensorI2C;
+    	eSensorI2CCBR <= SensorI2C.cSensorI2CCBR;
+	};
+	*/
+	
+	cell tTempSensor TempSensor{
+		portNumber = 0;
+	};
+
+	cell tGasPressureSensor GasPressureSensor{
+		portNumber = 1;
+	};
+
+	cell tSensorDriver SensorDriver{
+		ciSensorDriver[0] = TempSensor.eiSensorDriver;
+		ciSensorDriver[1] = GasPressureSensor.eiSensorDriver;
+	};	
+	
+	cell tRotaryEncoder RotaryEncoder{
+	};
+
+	cell tMotor Motor {
+		port = 0;
+		
+    	eiMotorInterrupt <= RotaryEncoder.ciMotorInterrupt[0];
+	};	
+
+	cell tInitializeRoutine LEDInitializeRoutine{
+    	cInitializeRoutineBody = LED.eInitialize;
+	};
+
+	cell tInitializeRoutine LEDIndicatorInitializeRoutine{
+    	cInitializeRoutineBody = LEDIndicator.eInitialize;
+	};
+
+	/*
+	cell tInitializeRoutine SensorInitializeRoutine{
+    	cInitializeRoutineBody = Sensor.eInitialize;
+	};
+	*/
+		
+	cell tMain01 Main01 {
+    	/* デバイスコンポーネントの受け口と結合 */
+    	cLED = LED.eLED;
+    
+    	cSerialPort = SerialPort1.eSerialPort;
+    	cSysLog = SysLog.eSysLog;
+    	cDisplayOutput = DisplayOutput.eDisplayOutput;
+    
+    	cBlueTooth = BlueTooth.eBlueTooth;
+    	
+    	cFileSystem = SPIFlashFS.eFileSystem;
+    	//cSensor = Sensor.eSensor;
+    	cMotor = Motor.eMotor;
+    	
+    	cTempSensor = TempSensor.eSensor; // 温度センサの呼び口
+		cGasPressureSensor = GasPressureSensor.eSensor; // 気圧センサの呼び口
+		cTempSensorControl = TempSensor.eSensorControl; // 温度センサ制御の呼び口
+	};
+
+
+	cell tDisplayOutput DisplayOutput{
+    	cLEDIndicator = LEDIndicator.eLEDIndicator;
+	};
+
+	cell tBlueTooth BlueTooth {
+    	
+    	//cFileSystem = SPIFlashFS.eFileSystem;
+		/* シリアルインタフェースドライバとの結合 */
+		cSerialPort        = SerialPort2.eSerialPort;
+		cnSerialPortManage = SerialPort2.enSerialPortManage;
+	};
+
+	cell tSerialPort SerialPort2 {
+		receiveBufferSize = 256;			/* 受信バッファのサイズ */
+		sendBufferSize    = 256;			/* 送信バッファのサイズ */
+
+		/* ターゲット依存部との結合 */
+		cSIOPort = SIOPortTarget2.eSIOPort;
+		eiSIOCBR <= SIOPortTarget2.ciSIOCBR;	/* コールバック */
+	};
+	
+};
+
+[linkunit,
+ to_through( rSample, OpaqueRPCPlugin2,
+			 "PPAllocatorSize=1024,"
+			 "clientChannelCell= 'ClientChannel', "	// クライアント側チャンネルセル名
+			 "clientChannelInitializer= !portNo=8931+$count$; serverAddr=\"192.168.1.4\";!, "
+			 "taskCelltype=tTask,"					// サーバー側タスクセルタイプ
+			 "taskPriority=9,"						// サーバー側タスク優先度, LWIP_DEFAULT_PRIORITY(8)にする。５だと設置すると、sys_arch_sem_waitはerror (-18)。
+			 "stackSize=4096,"						// サーバー側タスクスタックサイズ
+			 "serverChannelInitializer= !portNo=8931+$count$;!, "	// チャンネル
+			 "taskAttribute= 'TA_NOACTQUE', "           // サーバー側タスク属性。tcpip_thread起動後、手動（act_tsk）で起床する。			 
+)]
+region rSimple {
+
+	cell tSIOPortTarget SIOPortTarget1 {
+		/* 属性の設定 */
+		baseAddress     = C_EXP("USART_BASE");
+		interruptNumber = C_EXP("USART_INTNO");
+		bps = C_EXP("BPS_SETTING");
+	};
+	
+	/*
+	 *  低レベル出力の組み上げ記述
+	 */
+	cell tPutLogTarget PutLogTarget {
+		/* SIOドライバとの結合 */
+		cSIOPort = SIOPortTarget1.eSIOPort;
+	};
+	
+	
+	cell tSimple Simple {
+	    cSerialPort = SerialPort1.eSerialPort;
+    	cSysLog = SysLog.eSysLog;
+    	
+		cCall = rSample::Sample.eEnt;
+		cOpener = ClientChannel.eOpener;
+	};
+
+	cell tTask Task4 {
+		//cTaskBody = Simple.eMain;
+		cTaskBody = Simple.eTaskBody;
+		priority = 5;
+		stackSize = 1024;
+		attribute = C_EXP( "TA_ACT" );
+	};
+	
+	
+	cell tSysLogAdapter SysLogAdapter {
+		cSysLog = SysLog.eSysLog;
+	};
+	
+	cell tSerialAdapter SerialAdapter {
+		cSerialPort[0] = SerialPort1.eSerialPort;
+	};
+	
+	cell tSysLog SysLog {
+		logBufferSize = 32;
+		initLogMask = C_EXP("LOG_UPTO(LOG_NOTICE)");
+										/* ログバッファに記録すべき重要度 */
+		initLowMask = C_EXP("LOG_UPTO(LOG_EMERG)");
+									   	/* 低レベル出力すべき重要度 */
+		cPutLog = PutLogTarget.ePutLog;
+	};
+	
+	cell tSerialPort SerialPort1 {
+		receiveBufferSize = 256;			/* 受信バッファのサイズ */
+		sendBufferSize    = 256;			/* 送信バッファのサイズ */
+
+		/* ターゲット依存部との結合 */
+		cSIOPort = SIOPortTarget1.eSIOPort;
+		eiSIOCBR <= SIOPortTarget1.ciSIOCBR;	/* コールバック */
+	};
+	
+	cell tLogTask LogTask {
+		priority  = 3;					/* システムログタスクの優先度 */
+		stackSize = LogTaskStackSize;	/* システムログタスクのスタックサイズ */
+
+		/* シリアルインタフェースドライバとの結合 */
+		cSerialPort        = SerialPort1.eSerialPort;
+		cnSerialPortManage = SerialPort1.enSerialPortManage;
+
+		/* システムログ機能との結合 */
+		cSysLog = SysLog.eSysLog;
+
+		/* 低レベル出力との結合 */
+		cPutLog = PutLogTarget.ePutLog;
+	};
+	
+	cell tBanner Banner {
+		targetName      = BannerTargetName;
+		copyrightNotice = BannerCopyrightNotice;
+	};
+
+};

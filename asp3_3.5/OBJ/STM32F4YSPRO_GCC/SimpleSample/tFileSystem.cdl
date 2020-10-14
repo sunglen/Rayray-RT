@@ -1,0 +1,40 @@
+/*
+ *  FileSystemコンポーネント記述ファイル
+ */
+
+
+/*
+ * コンポーネントのインポート
+ */
+//import("");
+
+/*
+ * 構造体宣言
+ */
+import_C("files/fcntl.h");
+
+/*
+ * FSを操作するためのシグニチャ
+ */
+signature sFileSystem{
+    void config(void);
+    void openFile([out]int32_t* fd, [in,string]const char_t* p_path, [in]int32_t flags);
+    void readFile([in]int32_t fd, [out, size_is(bufferLenght)]uint8_t* p_buffer,
+                  [out]int32_t* p_successCount, [in]uint32_t bufferLenght);
+    void seek([in]int32_t fd, [out]int32_t* p_successCount, [in]uint32_t offSet);
+    void closeFile([in]int32_t fd);
+    void getFileInformation([out]struct stat *buf,
+                            [in, string]const char_t* p_path);
+    void writeFile([in]int32_t fd, [in]const uint8_t* p_buffer,
+                  [out]int32_t* p_successCount, [in]uint32_t bufferLenght);                            
+};
+
+/*
+ * FSManager
+ */
+[singleton]
+celltype tFileSystem{
+    //call    sSPIFlash             cSPIFlash;
+    entry   sFileSystem         eFileSystem;
+};
+

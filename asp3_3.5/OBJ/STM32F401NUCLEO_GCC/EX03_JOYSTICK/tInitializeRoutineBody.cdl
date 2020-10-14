@@ -1,0 +1,6 @@
+import(<kernel.cdl>);
+
+celltype tInitializeRoutineBody{
+	entry sRoutineBody eInitializeRoutineBody;
+	call  sRoutineBody cInitialize[]; 
+};

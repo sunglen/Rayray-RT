@@ -1,0 +1,50 @@
+import( "gen/tOpaqueRPCPlugin_tNBOTDR_tSocketClient_sSample.cdl" );
+import( "gen/tOpaqueRPCPlugin_tNBOTDR_tSocketServer_sSample.cdl" );
+
+region rSimple{
+
+    //  Semaphore for Multi-task use ("specify noClientSemaphore" option to delete this)
+    cell tSemaphore Join_to_through___0Server_Semaphore{
+      count = 1; attribute = C_EXP( "TA_NULL" ); 
+    };
+    //  Client Side Channel
+    cell tSocketClient ClientChannel{
+      portNo=8931+0; serverAddr="192.168.1.240";
+    };
+
+    //  Marshaler
+    cell tOpaqueRPCPlugin_tNBOTDR_tSocketClient_sSample Join_to_through___0 {
+      cChannel = ClientChannel.eC0;
+      cLockChannel = Join_to_through___0Server_Semaphore.eSemaphore;
+    };
+
+};
+
+
+region rSample{
+
+    //  Server Side Channel
+    cell tSocketServer Join_to_through___0Server{
+      portNo=8931+0;
+    };
+
+    //  Unmarshaler
+    cell tOpaqueRPCPlugin_tNBOTDR_tSocketServer_sSample Join_to_through___0Server_Unmarshaler {
+      cChannel = Join_to_through___0Server.eC1;
+      cCall = ::rSample::Sample.eEnt;
+    };
+
+    //  Unmarshaler Task Main
+    cell tRPCDedicatedTaskMainWithOpener Join_to_through___0Server_TaskMain {
+      cMain         = Join_to_through___0Server_Unmarshaler.eService;
+      cOpener       = Join_to_through___0Server.eOpener;
+    };
+
+    //  Unmarshaler Task
+    cell tTask Join_to_through___0Server_Task {
+      cBody         = Join_to_through___0Server_TaskMain.eMain;
+      priority      = 11;
+      stackSize     = 4096;
+      taskAttribute = C_EXP( "TA_ACT" );  /* mikan : marshaler task starts at beginning */
+    };
+};
